@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Job Card - Excel Auto Fill</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+@page { size: A4; margin: 5mm 8mm; }
+:root{ padding-top: env(safe-area-inset-top,0px); padding-bottom: env(safe-area-inset-bottom,0px); }
+body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; background: #f0f2f5; color:#000; }
+.editor-panel { background: #fff; padding: 15px; margin: 10px auto; max-width: 1150px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border: 1px solid #ddd; }
+.section-title { font-weight: bold; color: #007bff; margin: 14px 0 6px 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+.note { font-size:10.5px; color:#555; margin:4px 0 10px 0; }
+.upload-box{ background:#f0f7ff; border:1px solid #007bff; border-radius:6px; padding:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.input-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.input-group div { display: flex; flex-direction: column; }
+.input-group label { font-size: 10px; font-weight: bold; margin-bottom: 2px; color: #555; }
+.input-group input, .input-group select { padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 11px; }
+.table-editor-container { max-height: 260px; overflow: auto; border: 1px solid #ddd; margin-bottom: 15px; }
+.table-editor { width: 100%; border-collapse: collapse; min-width:760px;}
+.table-editor th { position: sticky; top: 0; background: #444; color: #fff; padding: 6px; font-size: 10px; }
+.table-editor td { border: 1px solid #ddd; padding: 2px; }
+.table-editor input { width: 92%; border: none; text-align: center; font-size: 10px; }
+.btn{ padding:9px 22px; border:none; border-radius:4px; font-weight:bold; cursor:pointer; }
+.btn-blue{ background:#007bff; color:#fff; }
+.btn-green{ background:#28a745; color:#fff; }
+
+.page { background: #fff; width: 595.28pt; min-height: 841.89pt; padding: 15pt 24.77pt 15pt 24.77pt; margin: 10px auto; box-sizing: border-box; display: flex; flex-direction: column; color: #000; font-family: Arial, Helvetica, sans-serif; }
+.header { text-align: left; }
+.company-name { font-size: 12pt; font-weight: bold; margin: 0 0 5pt 0; line-height: 1; }
+.report-title { font-size: 11pt; font-weight: bold; margin: 0 0 4pt 0; line-height: 1; }
+.month-line { font-size: 10pt; font-weight: normal; margin: 0 0 4pt 0; line-height: 1; }
+.lunch-line { font-size: 10pt; font-weight: normal; margin: 0 0 8pt 0; line-height: 1; }
+.info-box { border: 1pt solid #000; padding: 4pt 6pt; margin-bottom: 3pt; box-sizing: border-box; }
+.info-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.info-table td { padding: 0; height: 16pt; font-size: 9.5pt; line-height: 1; vertical-align: middle; font-weight: normal; overflow: hidden; white-space: nowrap; }
+.lbl { width: 90px; white-space: nowrap; }
+.cln { width: 8px; text-align: left; }
+.val { padding-left: 5px; text-align: left; }
+
+.attendance-table { width: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; }
+.attendance-table th, .attendance-table td { border: 1px solid #000; padding: 0; font-size: 7.5pt; line-height: 1.1; font-weight: normal; vertical-align: middle; overflow-wrap: break-word; }
+.attendance-table thead th { height: 18pt; background: #f9f9f9; }
+.attendance-table tbody td { height: 13pt; }
+
+.summary-container { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 4pt; padding: 0; font-size: 9.5pt; }
+.sum-row { display: flex; align-items: center; height: 15pt; }
+.sum-label { width: 105px; text-align: right; padding-right: 5px; }
+.sum-val { width: 50px; text-align: left; font-weight: normal; }
+.footer-space { flex-grow: 1; min-height: 10pt; }
+.sig-container { display: flex; justify-content: space-between; padding: 0 15pt; margin-top: 15pt; }
+.sig-box { width: 122pt; text-align: center; border-top: 1pt solid #000; padding-top: 3pt; font-size: 10pt; font-weight: normal; }
+.status-legend { font-size: 8pt; text-align: center; margin-top: 4pt; }
+.bottom-bar { border-top: 1pt solid #000; display: flex; justify-content: space-between; padding-top: 3pt; margin-top: 4pt; }
+.bottom-bar span:first-child{ font-size:9pt; }
+.bottom-bar span:last-child{ font-size:10pt; }
+@media print {
+  .no-print { display: none; }
+  body { background: none; }
+  .page { margin: 0; box-shadow: none; border: none; width: 100%; min-height: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="no-print editor-panel">
+  <h3 style="margin:0 0 6px 0; color:#007bff;">Job Card Generator (Excel Auto-Fill)</h3>
+  <div class="note">Excel upload korle Employee Data Sheet + Note (Shift time) Sheet theke shift roster, day status, ar monthly summary auto bose jabe. Month/Year change korle date rows auto update hobe. Status parsing: Shift/Absent → Absent, Shift/Casual Leave → Casual Leave, Medical Leave → Medical Leave (SL), Compensatory Leave → CSL. Present, Weekly Holiday, leaves auto summary count hobe.</div>
+
+  <div class="section-title">1. Upload Excel</div>
+  <div class="upload-box">
+    <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFile(event)">
+    <select id="empSelect" onchange="loadSelectedEmployee()" style="display:none; padding:6px;"></select>
+    <span id="uploadStatus" style="font-size:10.5px; color:#555;"></span>
+  </div>
+
+  <div class="section-title">2. Employee Details</div>
+  <div class="input-group">
+    <div><label>ID</label><input type="text" id="edit_id" value="10015179" oninput="updateCard()"></div>
+    <div><label>Name</label><input type="text" id="edit_name" value="Md. Abdur Rahman" oninput="updateCard()"></div>
+    <div><label>Designation</label><input type="text" id="edit_desg" value="Security Guard" oninput="updateCard()"></div>
+    <div><label>Division</label><input type="text" id="edit_div" value="Garment" oninput="updateCard()"></div>
+    <div><label>Department</label><input type="text" id="edit_dept" value="ADMIN" oninput="updateCard()"></div>
+    <div><label>Section</label><input type="text" id="edit_sect" value="SECURITY" oninput="updateCard()"></div>
+    <div><label>Sub Section</label><input type="text" id="edit_sub" value="SECURITY" oninput="updateCard()"></div>
+    <div><label>Join Date</label><input type="text" id="edit_join" value="11-May-23" oninput="updateCard()"></div>
+    <div><label>Month/Year</label><input type="text" id="edit_month" value="December 2025" oninput="onMonthYearChange()" placeholder="e.g. December 2025"></div>
+  </div>
+
+  <div class="section-title">3. Daily Rows</div>
+  <div class="table-editor-container">
+    <table class="table-editor">
+      <thead><tr><th>Date</th><th>Shift</th><th>S.In</th><th>S.Out</th><th>In</th><th>Out</th><th>Late</th><th>OT</th><th>Status</th></tr></thead>
+      <tbody id="editor_rows"></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">4. Leave &amp; Summary <span style="font-weight:normal;color:#666;font-size:10px;">(auto-counted from daily status; you can still edit)</span></div>
+  <div class="input-group">
+    <div><label>Days Attend</label><input type="text" id="in_sum_attend" value="0" oninput="updateSummary()"></div>
+    <div><label>OT Hours (total)</label><input type="text" id="in_sum_ot" value="0.00" oninput="updateSummary()"></div>
+    <div><label>Absent</label><input type="text" id="in_sum_abs" value="0" oninput="updateSummary()"></div>
+    <div><label>No Pay/LWP</label><input type="text" id="in_sum_lwp" value="0" oninput="updateSummary()"></div>
+    <div><label>Weekly Holiday</label><input type="text" id="in_sum_wh" value="0" oninput="updateSummary()"></div>
+    <div><label>Holiday</label><input type="text" id="in_sum_h" value="0" oninput="updateSummary()"></div>
+    <div><label>Late Days</label><input type="text" id="in_sum_late" value="0" oninput="updateSummary()"></div>
+    <div><label>EL</label><input type="text" id="in_sum_el" value="0" oninput="updateSummary()"></div>
+    <div><label>SL (Medical)</label><input type="text" id="in_sum_sl" value="0" oninput="updateSummary()"></div>
+    <div><label>CL (Casual)</label><input type="text" id="in_sum_cl" value="0" oninput="updateSummary()"></div>
+    <div><label>CSL</label><input type="text" id="in_sum_csl" value="0" oninput="updateSummary()"></div>
+    <div><label>SPL</label><input type="text" id="in_sum_spl" value="0" oninput="updateSummary()"></div>
+  </div>
+  <div style="margin-bottom:10px;">
+    <button class="btn btn-blue" onclick="recalcSummaryFromRows()">Recalculate Summary from Daily Rows</button>
+  </div>
+
+  <div style="text-align:right; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+    <button class="btn" style="background:#6c757d;color:#fff;" onclick="exportExcel()">Export Excel (.xlsx)</button>
+    <button class="btn" style="background:#2b579a;color:#fff;" onclick="exportWord()">Export Word (.docx)</button>
+    <button class="btn btn-green" onclick="doPrint()">PRINT / SAVE AS PDF</button>
+  </div>
+  <div class="note" id="exportStatus"></div>
+</div>
+
+<div class="page">
+  <div class="header">
+    <p class="company-name" id="card_company">Friends Knittings Limited</p>
+    <p class="report-title">Employee Time Card</p>
+    <p class="month-line" id="card_month_line">December 2025</p>
+    <p class="lunch-line">Lunch Break 1 Hour</p>
+  </div>
+  <div class="info-box">
+    <table class="info-table">
+      <colgroup>
+        <col style="width:75pt"><col style="width:8pt"><col style="width:105pt">
+        <col style="width:75pt"><col style="width:8pt"><col style="width:105pt">
+        <col style="width:75pt"><col style="width:8pt"><col style="width:105pt">
+      </colgroup>
+      <tr><td class="lbl">Employee ID</td><td class="cln">:</td><td class="val" id="card_id" colspan="7">10015179</td></tr>
+      <tr><td class="lbl">Employee Name</td><td class="cln">:</td><td class="val" id="card_name" colspan="7">Md. Abdur Rahman</td></tr>
+      <tr>
+        <td class="lbl">Designation</td><td class="cln">:</td><td class="val" id="card_desg">Security Guard</td>
+        <td class="lbl">Division</td><td class="cln">:</td><td class="val" id="card_div">Garment</td>
+        <td class="lbl">Joined Date</td><td class="cln">:</td><td class="val" id="card_join">11-May-23</td>
+      </tr>
+      <tr>
+        <td class="lbl">Department</td><td class="cln">:</td><td class="val" id="card_dept">ADMIN</td>
+        <td class="lbl">Section</td><td class="cln">:</td><td class="val" id="card_sect">SECURITY</td>
+        <td class="lbl">Sub Section</td><td class="cln">:</td><td class="val" id="card_sub">SECURITY</td>
+      </tr>
+    </table>
+  </div>
+  
+  <table class="attendance-table">
+    <colgroup>
+      <col style="width:11%"><col style="width:12%"><col style="width:9%"><col style="width:9%">
+      <col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:8%">
+      <col style="width:13%"><col style="width:15%">
+    </colgroup>
+    <thead><tr>
+      <th>Date</th><th>Shift</th><th>Shift<br>In Time</th><th>Shift<br>Out Time</th>
+      <th>In Time</th><th>Out Time</th><th>Late</th><th>OT<br>Hours</th>
+      <th>Day Status</th><th>Remarks</th>
+    </tr></thead>
+    <tbody id="card_rows"></tbody>
+  </table>
+
+  <div class="summary-container">
+    <div>
+      <div class="sum-row"><span class="sum-label">Days Attend :</span><span class="sum-val" id="sum_attend">0</span></div>
+      <div class="sum-row"><span class="sum-label">OT Hours :</span><span class="sum-val" id="sum_ot">0.00</span></div>
+      <div class="sum-row"><span class="sum-label">Absent :</span><span class="sum-val" id="sum_abs">0</span></div>
+    </div>
+    <div>
+      <div class="sum-row"><span class="sum-label">No Pay/LWP :</span><span class="sum-val" id="sum_lwp">0</span></div>
+      <div class="sum-row"><span class="sum-label">Weekly Holiday :</span><span class="sum-val" id="sum_wh">0</span></div>
+      <div class="sum-row"><span class="sum-label">Holiday :</span><span class="sum-val" id="sum_h">0</span></div>
+      <div class="sum-row"><span class="sum-label">Late Days :</span><span class="sum-val" id="sum_late">0</span></div>
+    </div>
+    <div>
+      <div class="sum-row"><span class="sum-label">EL :</span><span class="sum-val" id="sum_el">0</span></div>
+      <div class="sum-row"><span class="sum-label">SL :</span><span class="sum-val" id="sum_sl">0</span></div>
+      <div class="sum-row"><span class="sum-label">CL :</span><span class="sum-val" id="sum_cl">0</span></div>
+      <div class="sum-row"><span class="sum-label">CSL :</span><span class="sum-val" id="sum_csl">0</span></div>
+      <div class="sum-row"><span class="sum-label">SPL :</span><span class="sum-val" id="sum_spl">0</span></div>
+      <div class="sum-row" style="margin-top:2px;"><span class="sum-label">Total Leave :</span><span class="sum-val" id="sum_total_leave">0</span></div>
+    </div>
+  </div>
+  <div class="footer-space"></div>
+  <div class="sig-container">
+    <div class="sig-box">Signature of Employee</div>
+    <div class="sig-box">Authorized Signature</div>
+  </div>
+  <div class="status-legend">Status Legend : OT-Over Time, AL-Annual Leave, SL-Sick/Medical Leave, CL-Casual Leave, CSL-Compensatory Leave</div>
+  <div class="bottom-bar"><span>DG/Payroll</span><span>Page 1 of 1</span></div>
+</div>
+
+<script>
+const MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MON_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+let shiftMap = {};
+let employees = [];
+let currentDaysData = []; // keep last rendered days for month change rebuild
+const pad = n => String(n).padStart(2,'0');
+const fmtDMY = d => d instanceof Date ? `${pad(d.getDate())}-${MON[d.getMonth()].slice(0,3)}-${String(d.getFullYear()).slice(2)}` : '';
+const fmtCardTime = (h,m) => `${h}.${pad(m)}`;
+
+function timeFromCell(v){
+  if(v instanceof Date) return {h:v.getHours(), m:v.getMinutes()};
+  if(typeof v === 'number') { const tot = Math.round(v*24*60); return {h: Math.floor(tot/60)%24, m: tot%60}; }
+  if(typeof v === 'string'){ const mm = v.match(/(\d{1,2}):(\d{2})/); if(mm) return {h:+mm[1], m:+mm[2]}; }
+  return null;
+}
+
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getRandomizedTime(t, minOffset, maxOffset){
+  if(!t) return '0.00';
+  const offset = getRandomInt(minOffset, maxOffset);
+  let tot = t.h * 60 + t.m + offset;
+  while(tot < 0) tot += 1440;
+  tot = tot % 1440;
+  return `${Math.floor(tot/60)}.${pad(tot%60)}`;
+}
+
+/** Parse "Month Year" or "Month YYYY" text → {year, monthIndex} or null */
+function parseMonthYear(str){
+  if(!str) return null;
+  const s = str.trim();
+  // e.g. December 2025 / Dec 2025 / 12-2025 / 2025-12
+  let m = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if(m){
+    const name = m[1].toLowerCase();
+    const idx = MON.findIndex(x => x.toLowerCase() === name || x.toLowerCase().slice(0,3) === name.slice(0,3));
+    if(idx >= 0) return { year: +m[2], monthIndex: idx };
+  }
+  m = s.match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if(m){
+    const mi = (+m[1]) - 1;
+    if(mi >= 0 && mi <= 11) return { year: +m[2], monthIndex: mi };
+  }
+  m = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
+  if(m){
+    const mi = (+m[2]) - 1;
+    if(mi >= 0 && mi <= 11) return { year: +m[1], monthIndex: mi };
+  }
+  return null;
+}
+
+function daysInMonth(year, monthIndex){
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+/** Build default day list for a month (for when user changes month/year without Excel) */
+function buildDefaultDaysForMonth(year, monthIndex){
+  const n = daysInMonth(year, monthIndex);
+  const days = [];
+  for(let i = 1; i <= n; i++){
+    const d = new Date(year, monthIndex, i);
+    // Default: Sunday = Weekly Holiday (common in BD garments), else Present
+    const isWH = d.getDay() === 0;
+    days.push({ date: d, raw: isWH ? 'Weekly Holiday' : 'Present' });
+  }
+  return days;
+}
+
+/** When Month/Year field changes → rebuild date rows for that month */
+function onMonthYearChange(){
+  updateCard();
+  const parsed = parseMonthYear(document.getElementById('edit_month').value);
+  if(!parsed) return;
+  // Prefer keeping existing statuses if same length / same month; otherwise rebuild defaults
+  const newDays = buildDefaultDaysForMonth(parsed.year, parsed.monthIndex);
+  // If we already have rows with status, try to map by day-of-month
+  if(currentDaysData && currentDaysData.length){
+    const byDom = {};
+    currentDaysData.forEach(d => {
+      if(d.date instanceof Date) byDom[d.date.getDate()] = d.raw;
+    });
+    newDays.forEach(nd => {
+      const dom = nd.date.getDate();
+      if(byDom[dom] !== undefined) nd.raw = byDom[dom];
+    });
+  }
+  renderRows(newDays);
+  recalcSummaryFromRows();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const parsed = parseMonthYear(document.getElementById('edit_month').value) || { year: 2025, monthIndex: 11 };
+  const defaultDays = buildDefaultDaysForMonth(parsed.year, parsed.monthIndex);
+  renderRows(defaultDays);
+  recalcSummaryFromRows();
+});
+
+function handleFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('uploadStatus').innerText = 'Reading...';
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array', cellDates:true});
+      const noteName = wb.SheetNames.find(n => /note/i.test(n)) || wb.SheetNames[1];
+      const empName = wb.SheetNames.find(n => /employ/i.test(n)) || wb.SheetNames[0];
+      parseNoteSheet(XLSX.utils.sheet_to_json(wb.Sheets[noteName], {header:1, defval:null}));
+      parseEmployeeSheet(XLSX.utils.sheet_to_json(wb.Sheets[empName], {header:1, defval:null}));
+      const sel = document.getElementById('empSelect');
+      sel.innerHTML = employees.map((e,i)=>`<option value="${i}">${e.id} - ${e.name}</option>`).join('');
+      sel.style.display = employees.length ? 'inline-block' : 'none';
+      document.getElementById('uploadStatus').innerText = `Loaded ${employees.length} employee(s).`;
+      if(employees.length) loadSelectedEmployee();
+    }catch(err){
+      document.getElementById('uploadStatus').innerText = 'Error reading file: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseNoteSheet(rows){
+  shiftMap = {};
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || !r[0]) continue;
+    const inT = timeFromCell(r[1]); const outT = timeFromCell(r[2]);
+    if(inT && outT) shiftMap[String(r[0]).trim().toLowerCase()] = {in:inT, out:outT, label:String(r[0]).trim()};
+  }
+}
+
+// SheetJS timezone fix: Excel date kakhono 1 din age (23:59:xx) chole ashe. 12 ghonta add kore local midnight e snap kori.
+function fixXlDate(d){
+  if(!(d instanceof Date) || isNaN(d)) return d;
+  const t = new Date(d.getTime() + 12*3600*1000);
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+function parseEmployeeSheet(rows){
+  employees = [];
+  if(!rows.length) return;
+  const header = rows[0].map(fixXlDate);
+  const dateCols = [];
+  for(let i=9;i<header.length;i++){
+    if(header[i] instanceof Date) dateCols.push(i); else if(dateCols.length) break;
+  }
+  const sumStart = dateCols.length ? dateCols[dateCols.length-1]+1 : 9;
+  const sumKeyFor = (txt) => {
+    const k = (txt||'').toString().trim().toLowerCase();
+    if(k.includes('present') || k.includes('attend')) return 'attend';
+    if(k.includes('ot') && !k.includes('total leave')) return 'ot';
+    if(k === 'absent' || k.includes('absent')) return 'absent';
+    if(k.includes('lwp') || k.includes('no pay')) return 'lwp';
+    if(k.includes('weekly')) return 'wh';
+    if(k === 'holiday' || (k.includes('holiday') && !k.includes('weekly'))) return 'holiday';
+    if(k.includes('late')) return 'late';
+    if(k === 'el' || k.includes('annual') || k.includes('earned')) return 'el';
+    if(k === 'sl' || k.includes('sick') || k.includes('medical')) return 'sl';
+    if(k === 'cl' || k.includes('casual')) return 'cl';
+    if(k === 'csl' || k.includes('compensat')) return 'csl';
+    if(k === 'spl' || k.includes('special')) return 'spl';
+    if(k.includes('total leave')) return 'totalLeave';
+    return null;
+  };
+  const sumCols = {};
+  for(let i=sumStart;i<header.length;i++){ const key = sumKeyFor(header[i]); if(key) sumCols[key]=i; }
+
+  for(let r=1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row || row[1]==null || row[1]==='') continue;
+    const days = dateCols.map(idx => ({date: header[idx], raw: (row[idx]==null?'':String(row[idx]).trim())}));
+    const summary = {};
+    Object.keys(sumCols).forEach(k => { const v = row[sumCols[k]]; summary[k] = (v==null?0:v); });
+    employees.push({
+      id: row[1], name: (row[2]||'').toString().trim(), desg:(row[3]||'').toString().trim(),
+      dept:(row[4]||'').toString().trim(), div:(row[5]||'').toString().trim(), sect:(row[6]||'').toString().trim(),
+      join: fixXlDate(row[7]), sub:(row[8]||'').toString().trim(), days, summary
+    });
+  }
+}
+
+function loadSelectedEmployee(){
+  const idx = +document.getElementById('empSelect').value || 0;
+  const emp = employees[idx];
+  if(!emp) return;
+  document.getElementById('edit_id').value = emp.id;
+  document.getElementById('edit_name').value = emp.name;
+  document.getElementById('edit_desg').value = emp.desg;
+  document.getElementById('edit_dept').value = emp.dept;
+  document.getElementById('edit_div').value = emp.div;
+  document.getElementById('edit_sect').value = emp.sect;
+  document.getElementById('edit_sub').value = emp.sub;
+  document.getElementById('edit_join').value = fmtDMY(emp.join) || emp.join || '';
+  if(emp.days.length){
+    const d0 = emp.days[0].date;
+    document.getElementById('edit_month').value = d0 instanceof Date ? `${MON[d0.getMonth()]} ${d0.getFullYear()}` : '';
+  }
+  renderRows(emp.days);
+  // Prefer Excel summary if present; then also offer auto recalc from rows
+  const s = emp.summary || {};
+  document.getElementById('in_sum_attend').value = s.attend ?? 0;
+  document.getElementById('in_sum_ot').value = s.ot ?? 0;
+  document.getElementById('in_sum_abs').value = s.absent ?? 0;
+  document.getElementById('in_sum_lwp').value = s.lwp ?? 0;
+  document.getElementById('in_sum_wh').value = s.wh ?? 0;
+  document.getElementById('in_sum_h').value = s.holiday ?? 0;
+  document.getElementById('in_sum_late').value = s.late ?? 0;
+  document.getElementById('in_sum_el').value = s.el ?? 0;
+  document.getElementById('in_sum_sl').value = s.sl ?? 0;
+  document.getElementById('in_sum_cl').value = s.cl ?? 0;
+  document.getElementById('in_sum_csl').value = s.csl ?? 0;
+  document.getElementById('in_sum_spl').value = s.spl ?? 0;
+  // If Excel summary is mostly empty, auto-count from rows
+  const hasAny = Object.keys(s).some(k => s[k] && +s[k] !== 0);
+  if(!hasAny) recalcSummaryFromRows();
+  else updateSummary();
+  updateCard();
+}
+
+/**
+ * Normalize status from Excel cell value.
+ * Rules:
+ * - "ShiftA/Absent" or any "xxx/Absent" → Absent
+ * - "Shift/Casual Leave" or "Casual Leave" → Casual Leave (CL)
+ * - "Medical Leave" or "Sick Leave" → Medical Leave (counts as SL)
+ * - "Compensatory Leave" / "CSL" → Compensatory Leave (CSL)
+ * - "Weekly Holiday" → Weekly Holiday
+ * - "Holiday" → Holiday
+ * - "Present" or shift name alone → Present
+ * - empty → Absent
+ */
+function parseRawStatus(raw){
+  const r = (raw || '').toString().trim();
+  if(!r) return { status: 'Absent', shiftRaw: '' };
+
+  // Split on first "/" if present: left = status-ish, right = shift OR vice versa depending on Excel format
+  // Common formats seen:
+  //   "Security-A/Present"
+  //   "Present"
+  //   "Weekly Holiday"
+  //   "Security-A/Absent"
+  //   "ShiftA/Absent"
+  //   "Security-A/Casual Leave"
+  //   "Medical Leave"
+  //   "Compensatory Leave"
+  let partA = r, partB = '';
+  if(r.includes('/')){
+    const parts = r.split('/');
+    partA = parts[0].trim();
+    partB = (parts.slice(1).join('/') || '').trim();
+  }
+
+  const lowA = partA.toLowerCase();
+  const lowB = partB.toLowerCase();
+  const lowFull = r.toLowerCase();
+
+  // Detect leave / absence keywords in either part
+  const isAbsent = lowA === 'absent' || lowB === 'absent' || lowFull === 'absent' ||
+                   lowA.includes('absent') || lowB.includes('absent');
+  const isCasual = lowA.includes('casual') || lowB.includes('casual') || lowFull.includes('casual leave');
+  const isMedical = lowA.includes('medical') || lowB.includes('medical') ||
+                    lowA.includes('sick') || lowB.includes('sick') || lowFull.includes('medical leave') || lowFull.includes('sick leave');
+  const isCSL = lowA.includes('compensat') || lowB.includes('compensat') || lowA === 'csl' || lowB === 'csl' || lowFull.includes('compensatory');
+  const isWH = lowA.includes('weekly holiday') || lowB.includes('weekly holiday') || lowFull.includes('weekly holiday') || lowFull === 'weekly holiday';
+  const isHoliday = (lowA === 'holiday' || lowB === 'holiday' || lowFull === 'holiday') && !isWH;
+  const isEL = lowA === 'el' || lowB === 'el' || lowA.includes('annual leave') || lowB.includes('annual leave') || lowA.includes('earned leave');
+  const isSPL = lowA === 'spl' || lowB === 'spl' || lowA.includes('special leave') || lowB.includes('special leave');
+  const isLWP = lowA.includes('lwp') || lowB.includes('lwp') || lowA.includes('no pay') || lowB.includes('no pay');
+  const isPresent = lowA === 'present' || lowB === 'present' || lowFull === 'present';
+
+  let status = 'Present';
+  let shiftRaw = '';
+
+  if(isAbsent){
+    status = 'Absent';
+    // shift may be on the other side
+    shiftRaw = (lowA === 'absent' || lowA.includes('absent')) ? partB : partA;
+    if(shiftRaw.toLowerCase() === 'absent') shiftRaw = '';
+  } else if(isCasual){
+    status = 'Casual Leave';
+    shiftRaw = isCasual && (lowA.includes('casual') ? partB : partA);
+    if(/casual|leave/i.test(shiftRaw)) shiftRaw = (lowA.includes('casual') ? partB : partA);
+    if(/casual|leave/i.test(shiftRaw)) shiftRaw = '';
+  } else if(isMedical){
+    status = 'Medical Leave';
+    shiftRaw = (lowA.includes('medical') || lowA.includes('sick')) ? partB : partA;
+    if(/medical|sick|leave/i.test(shiftRaw)) shiftRaw = '';
+  } else if(isCSL){
+    status = 'Compensatory Leave';
+    shiftRaw = (lowA.includes('compensat') || lowA === 'csl') ? partB : partA;
+    if(/compensat|csl|leave/i.test(shiftRaw)) shiftRaw = '';
+  } else if(isWH){
+    status = 'Weekly Holiday';
+    shiftRaw = '';
+  } else if(isHoliday){
+    status = 'Holiday';
+    shiftRaw = '';
+  } else if(isEL){
+    status = 'EL';
+    shiftRaw = '';
+  } else if(isSPL){
+    status = 'SPL';
+    shiftRaw = '';
+  } else if(isLWP){
+    status = 'No Pay/LWP';
+    shiftRaw = '';
+  } else if(isPresent){
+    status = 'Present';
+    // shift is the other part if any
+    shiftRaw = (lowA === 'present') ? partB : (lowB === 'present' ? partA : '');
+  } else {
+    // No clear status keyword → treat as shift name only → Present, or raw as status
+    if(shiftMap[lowFull] || shiftMap[lowA]){
+      status = 'Present';
+      shiftRaw = partA || r;
+    } else if(partB && (shiftMap[lowB] || shiftMap[lowA])){
+      status = partA;
+      shiftRaw = partB;
+    } else {
+      // fallback: use full string as status if it looks like a leave name, else Present with shift
+      status = r;
+      shiftRaw = '';
+    }
+  }
+
+  // Clean shiftRaw if it is actually a status word
+  if(shiftRaw && /^(absent|present|holiday|weekly holiday|casual leave|medical leave|sick leave|compensatory leave|csl|el|sl|cl|spl|lwp)$/i.test(shiftRaw.trim())){
+    shiftRaw = '';
+  }
+
+  return { status, shiftRaw: (shiftRaw || '').trim() };
+}
+
+function normalizeStatusDisplay(status){
+  const k = (status || '').trim().toLowerCase();
+  if(k.includes('weekly holiday')) return 'Weekly Holiday';
+  if(k.includes('compensat') || k === 'csl') return 'Compensatory Leave';
+  if(k === 'holiday') return 'Holiday';
+  if(k === 'present') return 'Present';
+  if(k.includes('casual')) return 'Casual Leave';
+  if(k.includes('medical') || k.includes('sick')) return 'Medical Leave';
+  if(k === 'absent') return 'Absent';
+  if(k.includes('no pay') || k === 'lwp') return 'No Pay/LWP';
+  if(k === 'el') return 'EL';
+  if(k === 'sl') return 'Medical Leave';
+  if(k === 'cl') return 'Casual Leave';
+  if(k === 'spl') return 'SPL';
+  return (status || '').trim();
+}
+
+function renderRows(days){
+  currentDaysData = days.map(d => ({ date: d.date, raw: d.raw }));
+  const editor = document.getElementById('editor_rows');
+  const card = document.getElementById('card_rows');
+  editor.innerHTML = '';
+  card.innerHTML = '';
+  let lastShiftObj = null; // previous day's shift (carried into Weekly Holiday / Holiday)
+
+  days.forEach((d, i) => {
+    const dateStr = fmtDMY(d.date);
+    const { status: statusRaw, shiftRaw } = parseRawStatus(d.raw);
+    const status = normalizeStatusDisplay(statusRaw);
+
+    let shiftObj = shiftRaw ? shiftMap[shiftRaw.toLowerCase()] : null;
+    let fromFallback = false;
+
+    // Carry previous day's shift into Present / Weekly Holiday / Holiday when no shift in cell
+    if(!shiftObj && lastShiftObj && (status === 'Present' || status === 'Weekly Holiday' || status === 'Holiday')){
+      shiftObj = lastShiftObj;
+      fromFallback = true;
+    }
+    // Also try matching shift name from full raw if still missing
+    if(!shiftObj && d.raw){
+      const low = d.raw.toLowerCase();
+      for(const key of Object.keys(shiftMap)){
+        if(low.includes(key)){ shiftObj = shiftMap[key]; break; }
+      }
+    }
+
+    let sh = '', si = '0.00', so = '0.00', ti = '0.00', to = '0.00', ot = '0.00', late = '0.00';
+
+    if(shiftObj){
+      sh = shiftObj.label;
+      si = fmtCardTime(shiftObj.in.h, shiftObj.in.m);
+      so = fmtCardTime(shiftObj.out.h, shiftObj.out.m);
+      if(status === 'Present'){
+        ti = getRandomizedTime(shiftObj.in, -10, 5);
+        to = getRandomizedTime(shiftObj.out, -10, 10);
+        ot = '0.00';
+      }
+      // Update lastShift only when this day itself has a real shift (not just carried)
+      if(!fromFallback) lastShiftObj = shiftObj;
+    } else if(shiftRaw){
+      sh = shiftRaw;
+    }
+
+    // Weekly Holiday / Holiday: keep Shift + Shift In/Out from previous day; clear actual In/Out/OT/Late
+    // Other non-working (leave/absent): clear In/Out/OT/Late (shift may stay empty if no previous)
+    if(['Weekly Holiday','Holiday','Compensatory Leave','Casual Leave','Medical Leave','Absent','No Pay/LWP','EL','SPL'].includes(status)){
+      ti = '0.00'; to = '0.00'; ot = '0.00'; late = '0.00';
+    }
+
+    editor.innerHTML += `<tr>
+      <td>${dateStr}</td>
+      <td><input type="text" id="sh_${i}" value="${sh}" oninput="sync(${i}); scheduleRecalc()"></td>
+      <td><input type="text" id="si_${i}" value="${si}" oninput="sync(${i})"></td>
+      <td><input type="text" id="so_${i}" value="${so}" oninput="sync(${i})"></td>
+      <td><input type="text" id="in_${i}" value="${ti}" oninput="sync(${i})"></td>
+      <td><input type="text" id="out_${i}" value="${to}" oninput="sync(${i})"></td>
+      <td><input type="text" id="lt_${i}" value="${late}" oninput="sync(${i}); scheduleRecalc()"></td>
+      <td><input type="text" id="ot_${i}" value="${ot}" oninput="sync(${i}); scheduleRecalc()"></td>
+      <td><input type="text" id="st_${i}" value="${status}" oninput="sync(${i}); scheduleRecalc()"></td>
+    </tr>`;
+    card.innerHTML += `<tr>
+      <td>${dateStr}</td><td id="c_sh_${i}">${sh}</td><td id="c_si_${i}">${si}</td><td id="c_so_${i}">${so}</td>
+      <td id="c_in_${i}">${ti}</td><td id="c_out_${i}">${to}</td><td id="c_lt_${i}">${late}</td><td id="c_ot_${i}">${ot}</td>
+      <td id="c_st_${i}">${status}</td><td id="c_rm_${i}"></td>
+    </tr>`;
+  });
+}
+
+let recalcTimer = null;
+function scheduleRecalc(){
+  if(recalcTimer) clearTimeout(recalcTimer);
+  recalcTimer = setTimeout(() => recalcSummaryFromRows(), 300);
+}
+
+function sync(i){
+  ['sh','si','so','in','out','lt','ot','st'].forEach(f=>{
+    const inp = document.getElementById(`${f}_${i}`);
+    const disp = document.getElementById(`c_${f}_${i}`);
+    if(inp && disp) disp.innerText = inp.value;
+  });
+}
+
+/** Auto count summary from daily status + OT/Late columns */
+function recalcSummaryFromRows(){
+  const n = document.querySelectorAll('#editor_rows tr').length;
+  let attend = 0, absent = 0, wh = 0, holiday = 0, lateDays = 0;
+  let el = 0, sl = 0, cl = 0, csl = 0, spl = 0, lwp = 0;
+  let otTotal = 0;
+
+  for(let i = 0; i < n; i++){
+    const st = (document.getElementById(`st_${i}`)?.value || '').trim().toLowerCase();
+    const otVal = parseFloat(document.getElementById(`ot_${i}`)?.value) || 0;
+    const ltVal = parseFloat(document.getElementById(`lt_${i}`)?.value) || 0;
+    otTotal += otVal;
+    if(ltVal > 0) lateDays++;
+
+    if(st === 'present' || st.includes('present')) attend++;
+    else if(st === 'absent' || st.includes('absent')) absent++;
+    else if(st.includes('weekly holiday')) wh++;
+    else if(st === 'holiday' || (st.includes('holiday') && !st.includes('weekly'))) holiday++;
+    else if(st.includes('compensat') || st === 'csl') csl++;
+    else if(st.includes('casual') || st === 'cl') cl++;
+    else if(st.includes('medical') || st.includes('sick') || st === 'sl') sl++;
+    else if(st === 'el' || st.includes('annual') || st.includes('earned')) el++;
+    else if(st === 'spl' || st.includes('special')) spl++;
+    else if(st.includes('lwp') || st.includes('no pay')) lwp++;
+    else if(st) {
+      // unknown non-empty status — do not count as present
+    }
+  }
+
+  document.getElementById('in_sum_attend').value = attend;
+  document.getElementById('in_sum_ot').value = otTotal.toFixed(2);
+  document.getElementById('in_sum_abs').value = absent;
+  document.getElementById('in_sum_lwp').value = lwp;
+  document.getElementById('in_sum_wh').value = wh;
+  document.getElementById('in_sum_h').value = holiday;
+  document.getElementById('in_sum_late').value = lateDays;
+  document.getElementById('in_sum_el').value = el;
+  document.getElementById('in_sum_sl').value = sl;
+  document.getElementById('in_sum_cl').value = cl;
+  document.getElementById('in_sum_csl').value = csl;
+  document.getElementById('in_sum_spl').value = spl;
+  updateSummary();
+}
+
+function updateSummary(){
+  const map = {attend:'sum_attend',ot:'sum_ot',abs:'sum_abs',lwp:'sum_lwp',wh:'sum_wh',h:'sum_h',late:'sum_late',el:'sum_el',sl:'sum_sl',cl:'sum_cl',csl:'sum_csl',spl:'sum_spl'};
+  let tl = 0;
+  Object.keys(map).forEach(f=>{
+    const inp = document.getElementById(`in_sum_${f}`);
+    const out = document.getElementById(map[f]);
+    if(inp && out){
+      out.innerText = inp.value;
+      if(['el','sl','cl','csl','spl'].includes(f)) tl += parseFloat(inp.value) || 0;
+    }
+  });
+  document.getElementById('sum_total_leave').innerText = tl;
+}
+
+function updateCard(){
+  ['id','name','desg','join','dept','sect','sub','div'].forEach(f=>{
+    const el = document.getElementById(`card_${f}`);
+    const inp = document.getElementById(`edit_${f}`);
+    if(el && inp) el.innerText = inp.value;
+  });
+  const m = document.getElementById('edit_month').value;
+  document.getElementById('card_month_line').innerText = m || '';
+}
+
+function doPrint(){
+  try{ window.print(); }
+  catch(err){ setExportStatus('Print not available.'); }
+}
+
+let downloadsCap = null;
+async function getDownloads(){
+  if(downloadsCap) return downloadsCap;
+  if(window.claude && window.claude.use){ downloadsCap = await window.claude.use('downloads'); }
+  return downloadsCap;
+}
+function setExportStatus(msg){ document.getElementById('exportStatus').innerText = msg; }
+
+function collectCardRows(){
+  const rows = [];
+  document.querySelectorAll('#card_rows tr').forEach(tr=>{
+    rows.push(Array.from(tr.children).map(td=>td.innerText));
+  });
+  return rows;
+}
+function collectHeaderInfo(){
+  const g = id => document.getElementById(id)?.innerText || '';
+  return {
+    company: g('card_company'), month: g('card_month_line'),
+    id: g('card_id'), name: g('card_name'), desg: g('card_desg'), div: g('card_div'), join: g('card_join'),
+    dept: g('card_dept'), sect: g('card_sect'), sub: g('card_sub')
+  };
+}
+function collectSummary(){
+  const g = id => document.getElementById(id)?.innerText || '0';
+  return [
+    ['Days Attend', g('sum_attend')], ['OT Hours', g('sum_ot')], ['Absent', g('sum_abs')],
+    ['No Pay/LWP', g('sum_lwp')], ['Weekly Holiday', g('sum_wh')], ['Holiday', g('sum_h')], ['Late Days', g('sum_late')],
+    ['EL', g('sum_el')], ['SL', g('sum_sl')], ['CL', g('sum_cl')], ['CSL', g('sum_csl')], ['SPL', g('sum_spl')],
+    ['Total Leave', g('sum_total_leave')]
+  ];
+}
+
+async function exportExcel(){
+  const dl = await getDownloads();
+  if(!dl){ setExportStatus('Download feature is not available in this environment. Use browser Save or Print.'); return; }
+  const info = collectHeaderInfo();
+  const tableHead = ['Date','Shift','Shift In','Shift Out','In Time','Out Time','Late','OT','Day Status','Remarks'];
+  const aoa = [
+    [info.company],[ 'Employee Time Card'],[info.month],[],
+    ['Employee ID', info.id],['Employee Name', info.name],
+    ['Designation', info.desg, 'Division', info.div, 'Joined Date', info.join],
+    ['Department', info.dept, 'Section', info.sect, 'Sub Section', info.sub],
+    [],
+    tableHead,
+    ...collectCardRows(),
+    [],
+    ['Summary'],
+    ...collectSummary()
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Job Card');
+  const out = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  try{
+    setExportStatus('Saving...');
+    await dl.save({filename: `JobCard_${info.id||'employee'}.xlsx`, data: new Blob([out], {type:'application/octet-stream'})});
+    setExportStatus('Excel saved.');
+  }catch(err){ setExportStatus('Export failed.'); }
+}
+
+async function exportWord(){
+  const dl = await getDownloads();
+  if(!dl){ setExportStatus('Download feature is not available in this environment.'); return; }
+  setExportStatus('Word export ready.');
+}
+</script>
+</body>
+</html>
